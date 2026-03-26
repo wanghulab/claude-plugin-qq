@@ -1,0 +1,13 @@
+{
+  "name": "qq",
+  "description": "QQ channel for Claude Code — messaging bridge via NapCatQQ with built-in access control.",
+  "version": "0.1.0",
+  "keywords": [
+    "qq",
+    "tencent",
+    "messaging",
+    "channel",
+    "mcp",
+    "napcat"
+  ]
+}
