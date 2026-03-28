@@ -6,18 +6,19 @@
   },
   "metadata": {
     "description": "QQ channel plugin for Claude Code — receive and reply to QQ messages via NapCatQQ",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "plugins": [
     {
       "name": "qq",
       "source": "./",
       "description": "QQ channel for Claude Code — messaging bridge via NapCatQQ with built-in access control",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "wanghulab"
       },
-      "keywords": ["qq", "tencent", "messaging", "channel", "mcp", "napcat"]
+      "keywords": ["qq", "tencent", "messaging", "channel", "mcp", "napcat"],
+      "commands": ["./skills/configure/SKILL.md", "./skills/access/SKILL.md"]
     }
   ]
 }
