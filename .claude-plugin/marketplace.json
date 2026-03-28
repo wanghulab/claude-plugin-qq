@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "QQ channel plugin for Claude Code — receive and reply to QQ messages via NapCatQQ",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "plugins": [
     {
       "name": "qq",
       "source": "./",
       "description": "QQ channel for Claude Code — messaging bridge via NapCatQQ with built-in access control",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "wanghulab"
       },
