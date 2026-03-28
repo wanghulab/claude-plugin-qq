@@ -22,7 +22,7 @@ Uses [NapCatQQ](https://github.com/NapNeko/NapCatQQ) with OneBot 11 protocol. HT
 
 ```bash
 # Install directly from GitHub
-claude plugin add github:wanghulab/claude-plugin-qq
+claude plugin install github:wanghulab/claude-plugin-qq
 ```
 
 ### NapCatQQ Configuration
@@ -161,7 +161,7 @@ No public URL or WebSocket needed — everything runs locally.
 
 ```bash
 # 直接从 GitHub 安装
-claude plugin add github:wanghulab/claude-plugin-qq
+claude plugin install github:wanghulab/claude-plugin-qq
 ```
 
 ### NapCatQQ 配置
