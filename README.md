@@ -164,7 +164,7 @@ No public URL or WebSocket needed — everything runs locally.
 
 ```bash
 # 添加插件市场（首次使用）
-claude plugin marketplace add <your-marketplace>
+claude plugin marketplace add claude-channel-qq
 
 # 安装插件
 claude plugin install qq@claude-channel-qq
