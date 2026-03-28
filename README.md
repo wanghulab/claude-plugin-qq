@@ -21,11 +21,8 @@ Uses [NapCatQQ](https://github.com/NapNeko/NapCatQQ) with OneBot 11 protocol. HT
 ### Install
 
 ```bash
-# Add the marketplace (one-time)
-claude plugin marketplace add claude-channel-qq
-
-# Install the plugin
-claude plugin install qq@claude-channel-qq
+# Install directly from GitHub
+claude plugin add github:wanghulab/claude-plugin-qq
 ```
 
 ### NapCatQQ Configuration
@@ -88,7 +85,7 @@ If NapCatQQ has access_token configured:
 ### Start with channels
 
 ```bash
-claude --dangerously-load-development-channels plugin:qq@claude-channel-qq
+claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude-plugin-qq
 ```
 
 > The `--dangerously-load-development-channels` flag is required during the [channels research preview](https://code.claude.com/docs/en/channels-reference#test-during-the-research-preview) for non-official plugins.
@@ -163,11 +160,8 @@ No public URL or WebSocket needed — everything runs locally.
 ### 安装
 
 ```bash
-# 添加插件市场（首次使用）
-claude plugin marketplace add claude-channel-qq
-
-# 安装插件
-claude plugin install qq@claude-channel-qq
+# 直接从 GitHub 安装
+claude plugin add github:wanghulab/claude-plugin-qq
 ```
 
 ### NapCatQQ 配置
@@ -230,7 +224,7 @@ claude plugin install qq@claude-channel-qq
 ### 启用频道
 
 ```bash
-claude --dangerously-load-development-channels plugin:qq@claude-channel-qq
+claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude-plugin-qq
 ```
 
 > `--dangerously-load-development-channels` 参数在[频道研究预览期](https://code.claude.com/docs/en/channels-reference#test-during-the-research-preview)是必需的。
