@@ -433,7 +433,10 @@ const httpServer = Bun.serve({
 
     // Health check
     if (url.pathname === '/health' || url.pathname === '/') {
-      return new Response('OK', { status: 200 })
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
     }
 
     // OneBot event endpoint
