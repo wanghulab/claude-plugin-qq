@@ -443,9 +443,16 @@ const httpServer = Bun.serve({
         handleInbound(event).catch((err) => {
           process.stderr.write(`qq channel: event handler error: ${err}\n`)
         })
-        return new Response('OK', { status: 200 })
+        // OneBot 11 requires JSON response for quick operations
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
       } catch (err) {
-        return new Response('Bad Request', { status: 400 })
+        return new Response(JSON.stringify({ error: 'Bad Request' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        })
       }
     }
 

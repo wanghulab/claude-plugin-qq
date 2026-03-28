@@ -22,10 +22,10 @@ Uses [NapCatQQ](https://github.com/NapNeko/NapCatQQ) with OneBot 11 protocol. HT
 
 ```bash
 # Add the marketplace (one-time)
-claude plugin marketplace add <your-marketplace>
+claude plugin marketplace add claude-channel-qq
 
 # Install the plugin
-claude plugin install qq@<marketplace-name>
+claude plugin install qq@claude-channel-qq
 ```
 
 ### NapCatQQ Configuration
@@ -88,7 +88,7 @@ If NapCatQQ has access_token configured:
 ### Start with channels
 
 ```bash
-claude --dangerously-load-development-channels plugin:qq@<marketplace-name>
+claude --dangerously-load-development-channels plugin:qq@claude-channel-qq
 ```
 
 > The `--dangerously-load-development-channels` flag is required during the [channels research preview](https://code.claude.com/docs/en/channels-reference#test-during-the-research-preview) for non-official plugins.
@@ -167,7 +167,7 @@ No public URL or WebSocket needed — everything runs locally.
 claude plugin marketplace add <your-marketplace>
 
 # 安装插件
-claude plugin install qq@<marketplace-name>
+claude plugin install qq@claude-channel-qq
 ```
 
 ### NapCatQQ 配置
@@ -230,7 +230,7 @@ claude plugin install qq@<marketplace-name>
 ### 启用频道
 
 ```bash
-claude --dangerously-load-development-channels plugin:qq@<marketplace-name>
+claude --dangerously-load-development-channels plugin:qq@claude-channel-qq
 ```
 
 > `--dangerously-load-development-channels` 参数在[频道研究预览期](https://code.claude.com/docs/en/channels-reference#test-during-the-research-preview)是必需的。
