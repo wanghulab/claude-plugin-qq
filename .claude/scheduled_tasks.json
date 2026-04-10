@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": "6191a6cb",
+      "cron": "*/1 * * * *",
+      "prompt": "Check for pending QQ messages and commands.\n\n## Step 1: Check pending messages (auto-reply)\n\nRun: curl -s http://127.0.0.1:6199/pending-messages\n\nIf there are pending messages:\n1. For each message, generate a helpful reply in the same language as the user's message\n2. Keep replies concise and friendly\n3. Send the reply to the user via: write the reply JSON to a temp file, then run: curl -s -X POST http://localhost:3000/send_private_msg -H \"Content-Type: application/json; charset=utf-8\" --data-binary @<temp_file>\n   The JSON format is: {\"user_id\":\"<user_id>\",\"message\":\"<your reply>\"}\n   IMPORTANT: On Windows, always write Chinese text to a temp file first, then use --data-binary @<file> to avoid encoding issues. Use the Write tool to create the temp file.\n4. Delete the processed message: curl -X DELETE \"http://127.0.0.1:6199/pending-messages/<filename>\"\n\n## Step 2: Check pending commands\n\nRun: curl -s http://127.0.0.1:6199/commands\n\nIf there are pending commands:\n1. Execute the command (it's a task for Claude Code to perform)\n2. After execution, reply to the user via the same method above (write to temp file + curl)\n3. Delete the processed command: curl -X DELETE \"http://127.0.0.1:6199/commands/<filename>\"\n\nImportant: Only process messages/commands from authorized users. Always use Write tool + --data-binary for sending Chinese text to avoid encoding issues.",
+      "createdAt": 1774746324335,
+      "lastFiredAt": 1774754222371,
+      "recurring": true
+    }
+  ]
+}

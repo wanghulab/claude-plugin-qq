@@ -32,6 +32,7 @@ const CONFIG_FILE = join(STATE_DIR, 'config.json')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const PENDING_CMDS_DIR = join(STATE_DIR, 'pending-cmds')
+const PENDING_MSGS_DIR = join(STATE_DIR, 'pending-msgs')
 
 // Dangerous command patterns - these will be blocked
 const DANGEROUS_PATTERNS = [
@@ -53,6 +54,8 @@ type Config = {
   httpUrl: string
   accessToken?: string
   listenPort: number
+  autoReply?: boolean
+  model?: string
 }
 
 type PendingEntry = {
@@ -86,6 +89,8 @@ function loadConfig(): Config | null {
       httpUrl: parsed.httpUrl || 'http://localhost:3000',
       accessToken: parsed.accessToken,
       listenPort: parsed.listenPort || 6099,
+      autoReply: parsed.autoReply ?? true,
+      model: parsed.model || 'haiku',
     }
   } catch {
     return null
@@ -196,6 +201,23 @@ function writePendingCommand(senderId: string, command: string): string {
       user_id: senderId,
       command,
       ts: new Date().toISOString(),
+    }, null, 2),
+    { mode: 0o600 }
+  )
+  return filepath
+}
+
+// Write message to pending directory for auto-reply processing
+function writePendingMessage(senderId: string, content: string, ts: string): string {
+  mkdirSync(PENDING_MSGS_DIR, { recursive: true, mode: 0o700 })
+  const filename = `${Date.now()}_${senderId}.json`
+  const filepath = join(PENDING_MSGS_DIR, filename)
+  writeFileSync(
+    filepath,
+    JSON.stringify({
+      user_id: senderId,
+      content,
+      ts,
     }, null, 2),
     { mode: 0o600 }
   )
@@ -532,19 +554,32 @@ async function handleInbound(event: any): Promise<void> {
     }
   }
 
-  // Add to message queue
-  messageQueue.push({
-    user_id: senderId,
-    content: text,
-    ts,
-  })
+  // Route message based on autoReply config
+  if (config!.autoReply) {
+    // Write to file for scheduled task auto-reply
+    try {
+      writePendingMessage(senderId, text, ts)
+      process.stderr.write(`qq channel: pending message from ${senderId} (auto-reply)\n`)
+    } catch (err) {
+      // Fallback to queue if file write fails
+      messageQueue.push({ user_id: senderId, content: text, ts })
+      process.stderr.write(`qq channel: file write failed, queued message from ${senderId}: ${err}\n`)
+    }
+  } else {
+    // Add to in-memory queue for Stop hook polling
+    messageQueue.push({
+      user_id: senderId,
+      content: text,
+      ts,
+    })
 
-  // Keep queue size bounded
-  while (messageQueue.length > MAX_QUEUE_SIZE) {
-    messageQueue.shift()
+    // Keep queue size bounded
+    while (messageQueue.length > MAX_QUEUE_SIZE) {
+      messageQueue.shift()
+    }
+
+    process.stderr.write(`qq channel: queued message from ${senderId}\n`)
   }
-
-  process.stderr.write(`qq channel: queued message from ${senderId}\n`)
 }
 
 // Start HTTP server for events
@@ -615,6 +650,44 @@ const httpServer = Bun.serve({
       }
       try {
         rmSync(join(PENDING_CMDS_DIR, filename), { force: true })
+        return new Response(JSON.stringify({ success: true }), { status: 200 })
+      } catch (err) {
+        return new Response(JSON.stringify({ error: String(err) }), { status: 500 })
+      }
+    }
+
+    // Get pending messages (for auto-reply processing)
+    if (url.pathname === '/pending-messages' && req.method === 'GET') {
+      try {
+        const files = readdirSync(PENDING_MSGS_DIR)
+        const messages: Array<{ user_id: string; content: string; ts: string; file: string }> = []
+        for (const f of files) {
+          if (!f.endsWith('.json')) continue
+          try {
+            const content = readFileSync(join(PENDING_MSGS_DIR, f), 'utf8')
+            messages.push({ ...JSON.parse(content), file: f })
+          } catch {}
+        }
+        return new Response(JSON.stringify({ messages }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      } catch {
+        return new Response(JSON.stringify({ messages: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+    }
+
+    // Delete a processed message
+    if (url.pathname.startsWith('/pending-messages/') && req.method === 'DELETE') {
+      const filename = url.pathname.slice('/pending-messages/'.length)
+      if (!filename.endsWith('.json')) {
+        return new Response(JSON.stringify({ error: 'Invalid file' }), { status: 400 })
+      }
+      try {
+        rmSync(join(PENDING_MSGS_DIR, filename), { force: true })
         return new Response(JSON.stringify({ success: true }), { status: 200 })
       } catch (err) {
         return new Response(JSON.stringify({ error: String(err) }), { status: 500 })
