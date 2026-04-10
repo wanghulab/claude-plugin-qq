@@ -102,61 +102,26 @@ If NapCatQQ has access_token configured:
 
 ### Usage Modes
 
-#### Mode 1: Auto-Reply Background Script (Recommended)
-
-A standalone background script that polls for new messages and replies using an LLM API — no Claude Code session required.
-
-**1. Configure LLM API** — create `~/.claude/channels/qq/api.json`:
-
-```json
-{
-  "baseUrl": "https://open.bigmodel.cn/api/paas/v4/",
-  "key": "your-api-key-here",
-  "model": "glm-5.1"
-}
-```
-
-Supports any OpenAI-compatible API (Anthropic, OpenAI, DeepSeek, GLM, etc.).
-
-**2. Start the script:**
-
-```bash
-cd <plugin-directory>
-bun auto-reply.ts
-```
-
-The script:
-- Polls `/pending-messages` every 10 seconds
-- Calls the LLM API to generate replies
-- Sends replies via NapCatQQ HTTP API
-- Handles message chunking for long replies
-
-**3. Run as background process:**
-
-```bash
-nohup bun auto-reply.ts > /tmp/auto-reply.log 2>&1 &
-```
-
-#### Mode 2: Claude Code Session (with cron + Stop Hook)
+#### Mode 1: Auto-Reply via Claude Code Session (Recommended)
 
 When a Claude Code session is active, two mechanisms provide automatic QQ message handling:
 
-- **Stop Hook (asyncRewake):** After each Claude response, checks for pending messages. If found, auto-wakes Claude to process them.
-- **Cron Task (1-minute interval):** Periodic fallback that checks pending messages when the session is idle.
+- **Stop Hook (asyncRewake):** After each Claude response, checks for pending messages. If found, auto-wakes Claude to process them with full conversation context.
+- **Cron Task (1-minute interval):** Periodic fallback that checks pending messages when the session is idle. Persistent across session restarts.
 
 The cron task prompt instructs Claude to:
 1. Fetch pending messages via `/pending-messages`
 2. Search the web for relevant information
-3. Generate a helpful reply
+3. Generate a helpful reply (with conversation context)
 4. Send the reply and delete the processed message
 
 > Note: Cron tasks are persistent (survive session restarts) but require Claude Code to be running.
 
-#### Mode 3: Manual Polling
+#### Mode 2: Manual Polling
 
 Use the `check_messages` MCP tool to manually poll for messages.
 
-#### Mode 4: Channel Mode (Requires Channels feature)
+#### Mode 3: Channel Mode (Requires Channels feature)
 
 If you have access to the Channels feature (research preview):
 
@@ -242,7 +207,6 @@ NapCatQQ (:3000) ──HTTP POST events──► server.ts (:6199)
                 ◄──HTTP API calls────
                       │
                       ├── MCP Server (stdio) ──► Claude Code
-                      ├── auto-reply.ts ──► LLM API ──► Auto-reply (independent)
                       ├── Stop Hook (asyncRewake) ──► Wake Claude on new messages
                       ├── Cron Task (1min) ──► Fallback auto-reply
                       ├── Message Queue (in-memory, polling mode)
@@ -369,55 +333,20 @@ claude plugin install qq@claude-channel-qq
 
 ### 使用模式
 
-#### 模式 1：自动回复后台脚本（推荐）
-
-独立后台脚本，通过 LLM API 自动回复 QQ 消息，无需 Claude Code 会话。
-
-**1. 配置 LLM API** — 创建 `~/.claude/channels/qq/api.json`：
-
-```json
-{
-  "baseUrl": "https://open.bigmodel.cn/api/paas/v4/",
-  "key": "your-api-key-here",
-  "model": "glm-5.1"
-}
-```
-
-支持任何 OpenAI 兼容 API（Anthropic、OpenAI、DeepSeek、GLM 等）。
-
-**2. 启动脚本：**
-
-```bash
-cd <插件目录>
-bun auto-reply.ts
-```
-
-脚本工作流程：
-- 每 10 秒轮询 `/pending-messages` 端点
-- 调用 LLM API 生成回复
-- 通过 NapCatQQ HTTP API 发送回复
-- 自动处理长消息分块
-
-**3. 后台运行：**
-
-```bash
-nohup bun auto-reply.ts > /tmp/auto-reply.log 2>&1 &
-```
-
-#### 模式 2：Claude Code 会话（cron + Stop Hook）
+#### 模式 1：通过 Claude Code 会话自动回复（推荐）
 
 当 Claude Code 会话处于活跃状态时，两个机制提供自动 QQ 消息处理：
 
-- **Stop Hook (asyncRewake)：** 每次 Claude 回复后检查待处理消息，发现消息时自动唤醒 Claude 处理
+- **Stop Hook (asyncRewake)：** 每次 Claude 回复后检查待处理消息，发现消息时自动唤醒 Claude 处理，带有完整对话上下文
 - **Cron 定时任务（1分钟间隔）：** 会话空闲时的兜底检查，持久化配置，重启不丢失
 
-> 注意：Cron 任务需要 Claude Code 处于运行状态。
+> 注意：所有回复都在 Claude Code 会话上下文中进行，确保回复与对话历史关联。需要 Claude Code 处于运行状态。
 
-#### 模式 3：手动轮询
+#### 模式 2：手动轮询
 
 使用 `check_messages` MCP 工具手动轮询消息。
 
-#### 模式 4：频道模式（需要 Channels 功能）
+#### 模式 3：频道模式（需要 Channels 功能）
 
 如果你有 Channels 功能访问权限（研究预览）：
 
@@ -501,7 +430,6 @@ NapCatQQ (:3000) ──HTTP POST 事件上报──► server.ts (:6199)
                 ◄──HTTP API 调用────────
                       │
                       ├── MCP Server (stdio) ──► Claude Code
-                      ├── auto-reply.ts ──► LLM API ──► 独立自动回复
                       ├── Stop Hook (asyncRewake) ──► 有新消息时唤醒 Claude
                       ├── Cron 定时任务 (1分钟) ──► 兜底自动回复
                       ├── 消息队列 (内存，轮询模式)
