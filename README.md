@@ -12,6 +12,15 @@ QQ channel plugin for [Claude Code](https://claude.com/claude-code) — receive 
 
 Uses [NapCatQQ](https://github.com/NapNeko/NapCatQQ) with OneBot 11 protocol. HTTP event post — no WebSocket or public webhook needed.
 
+### Features
+
+- **Automatic message polling** via Stop hook — messages are injected into context automatically
+- **Remote command execution** — send `/cmd <command>` from QQ to execute commands on the host
+- **Access control** — pairing mode, allowlist, or disabled
+- **Message chunking** — long replies split at paragraph/line/space boundaries
+- **Dangerous command filtering** — blocks `rm -rf`, `drop table`, `git push --force`, etc.
+- **MCP tools** — `check_messages` and `reply` for manual control
+
 ### Prerequisites
 
 - [Claude Code](https://claude.com/claude-code) v2.1.80+
@@ -73,6 +82,12 @@ If NapCatQQ has access_token configured:
 /qq:configure setup http://localhost:3000 your_token_here
 ```
 
+#### Custom listen port
+
+```
+/qq:configure port 6199
+```
+
 #### Check status
 
 ```
@@ -85,13 +100,66 @@ If NapCatQQ has access_token configured:
 /qq:configure test
 ```
 
-### Start with channels
+### Usage Modes
+
+#### Mode 1: Hook-Driven Polling (Recommended)
+
+The plugin installs a **Stop hook** that automatically checks for new QQ messages after each Claude Code response. When messages are waiting, the hook injects them into context and keeps the session running.
+
+Just start Claude Code normally:
+
+```bash
+cd <plugin-directory>
+claude
+```
+
+The hook runs `node hooks/qq-poll.cjs` after each response, which:
+1. Calls `/has-messages` endpoint (lightweight check, does not drain queue)
+2. If messages exist, calls `/messages` to fetch and drain the queue
+3. Blocks the stop and injects messages into the Claude session
+
+**Loop prevention:** When Claude re-invokes after a block, the hook detects `stop_hook_active = true` and exits cleanly to prevent infinite loops.
+
+#### Mode 2: Manual Polling
+
+Use the `check_messages` MCP tool to manually poll for messages:
+
+```
+You: Check for new QQ messages
+Claude: [uses check_messages tool]
+Claude: 1 new message(s):
+
+[2026-03-28T14:30:00.000Z] QQ用户 12345678:
+Hello!
+
+You: Reply "Hi there!" to user 12345678
+Claude: [uses reply tool]
+Claude: sent 1 chunk(s)
+```
+
+#### Mode 3: Channel Mode (Requires Channels feature)
+
+If you have access to the Channels feature (research preview):
 
 ```bash
 claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude-plugin-qq
 ```
 
 > The `--dangerously-load-development-channels` flag is required during the [channels research preview](https://code.claude.com/docs/en/channels-reference#test-during-the-research-preview) for non-official plugins.
+
+### Remote Commands
+
+Send `/cmd <command>` from QQ to execute a command on the host machine:
+
+```
+You (on QQ): /cmd ls -la
+Bot: ✅ 命令已接收，正在执行: ls -la
+Bot: <command output>
+```
+
+**Dangerous commands are blocked:** `rm -rf`, `del`, `format`, `shutdown`, `reboot`, `drop table`, `truncate table`, `git push --force`, `git reset --hard`.
+
+Commands are processed by a scheduled cron job that runs every minute.
 
 ### Pair your QQ account
 
@@ -108,10 +176,22 @@ claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude
 ### How it works
 
 The plugin runs a local MCP server that:
-1. Listens for HTTP POST events from NapCatQQ (port 6099)
-2. Processes incoming private messages
-3. Forwards allowed messages to your Claude Code session
+1. Listens for HTTP POST events from NapCatQQ (default port 6099, configurable)
+2. Processes incoming private messages through access control
+3. Stores approved messages in an in-memory queue (max 100)
 4. Sends replies back through NapCatQQ's HTTP API
+5. Provides HTTP endpoints for polling and command management
+
+**HTTP Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/has-messages` | GET | Check if messages exist (does not drain queue) |
+| `/messages` | GET | Fetch and drain message queue |
+| `/commands` | GET | List pending remote commands |
+| `/commands/<file>` | DELETE | Delete a processed command |
+| `/onebot/event` | POST | Receive OneBot 11 events from NapCatQQ |
 
 No public URL or WebSocket needed — everything runs locally.
 
@@ -134,6 +214,26 @@ No public URL or WebSocket needed — everything runs locally.
 /qq:access policy <mode>      # Set policy
 ```
 
+### Architecture
+
+```
+NapCatQQ (:3000) ──HTTP POST events──► server.ts (:6099)
+                ◄──HTTP API calls────
+                      │
+                      ├── MCP Server (stdio) ──► Claude Code
+                      ├── Message Queue (in-memory, polling mode)
+                      ├── Stop Hook (qq-poll.cjs) ──► Auto-injects messages
+                      └── Remote Commands (/cmd prefix)
+```
+
+### Security
+
+- HTTP server binds to `127.0.0.1` only
+- Config files use mode `0o600`
+- `assertSendable()` blocks sending channel state files
+- `assertAllowedUser()` validates outbound recipients
+- Dangerous command patterns are filtered
+
 ### Comparison with WeChat Plugin
 
 | Feature | WeChat Plugin | QQ Plugin |
@@ -143,6 +243,8 @@ No public URL or WebSocket needed — everything runs locally.
 | Login | QR scan for token | NapCatQQ WebUI |
 | Reply token | context_token required | Not needed |
 | User ID | ilink_user_id | QQ number |
+| Remote commands | No | Yes (/cmd prefix) |
+| Auto-polling | No | Yes (Stop hook) |
 
 ---
 
@@ -153,6 +255,15 @@ No public URL or WebSocket needed — everything runs locally.
 [Claude Code](https://claude.com/claude-code) 的 QQ 频道插件 — 在终端中直接接收和回复 QQ 消息。
 
 使用 [NapCatQQ](https://github.com/NapNeko/NapCatQQ) 基于 OneBot 11 协议。采用 HTTP 事件上报方式 — 无需 WebSocket 或公网 Webhook。
+
+### 功能特性
+
+- **自动消息轮询** — 通过 Stop Hook 自动检测并注入新消息到会话
+- **远程命令执行** — 在 QQ 中发送 `/cmd <命令>` 远程执行主机命令
+- **访问控制** — 配对模式、白名单模式或禁用
+- **消息分块** — 长回复按段落/行/空格边界拆分
+- **危险命令过滤** — 拦截 `rm -rf`、`drop table`、`git push --force` 等
+- **MCP 工具** — `check_messages` 和 `reply` 提供手动控制
 
 ### 前置要求
 
@@ -215,6 +326,12 @@ claude plugin install qq@claude-channel-qq
 /qq:configure setup http://localhost:3000 你的_token
 ```
 
+#### 自定义监听端口
+
+```
+/qq:configure port 6199
+```
+
 #### 查看状态
 
 ```
@@ -227,13 +344,64 @@ claude plugin install qq@claude-channel-qq
 /qq:configure test
 ```
 
-### 启用频道
+### 使用模式
+
+#### 模式 1：Hook 自动轮询（推荐）
+
+插件安装了 **Stop hook**，在每次 Claude Code 响应后自动检查新 QQ 消息。有消息等待时，hook 会将消息注入上下文并保持会话运行。
+
+正常启动 Claude Code 即可：
+
+```bash
+cd <插件目录>
+claude
+```
+
+Hook 运行 `node hooks/qq-poll.cjs`，工作流程：
+1. 调用 `/has-messages` 端点（轻量检查，不清空队列）
+2. 如果有消息，调用 `/messages` 获取并清空队列
+3. 阻止停止并将消息注入 Claude 会话
+
+**循环防护：** Claude 因 block 重新调用时，hook 检测到 `stop_hook_active = true`，干净退出，防止无限循环。
+
+#### 模式 2：手动轮询
+
+使用 `check_messages` MCP 工具手动轮询消息：
+
+```
+你: 检查新的 QQ 消息
+Claude: [使用 check_messages 工具]
+Claude: 1 条新消息：
+
+[2026-03-28T14:30:00.000Z] QQ用户 12345678:
+你好！
+
+你: 向用户 12345678 回复 "你好！"
+Claude: [使用 reply 工具]
+Claude: 已发送 1 个消息块
+```
+
+#### 模式 3：频道模式（需要 Channels 功能）
+
+如果你有 Channels 功能访问权限（研究预览）：
 
 ```bash
 claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude-plugin-qq
 ```
 
-> `--dangerously-load-development-channels` 参数在[频道研究预览期](https://code.claude.com/docs/en/channels-reference#test-during-the-research-preview)是必需的。
+### 远程命令
+
+在 QQ 中发送 `/cmd <命令>` 来远程执行主机上的命令：
+
+```
+你 (在QQ): /cmd ls -la
+机器人: ✅ 命令已接收，正在执行: ls -la
+机器人: <命令输出>
+```
+
+**危险命令会被拦截：** `rm -rf`、`del`、`format`、`shutdown`、`reboot`、`drop table`、`truncate table`、`git push --force`、`git reset --hard`。
+
+命令由定时任务（每分钟）处理。
 
 ### 配对 QQ 账号
 
@@ -250,10 +418,22 @@ claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude
 ### 工作原理
 
 插件运行一个本地 MCP 服务器：
-1. 监听来自 NapCatQQ 的 HTTP POST 事件（端口 6099）
-2. 处理接收到的私聊消息
-3. 将允许的消息转发到 Claude Code 会话
+1. 监听来自 NapCatQQ 的 HTTP POST 事件（默认端口 6099，可配置）
+2. 通过访问控制处理接收到的私聊消息
+3. 将允许的消息存入内存队列（最多 100 条）
 4. 通过 NapCatQQ 的 HTTP API 发送回复
+5. 提供轮询和命令管理的 HTTP 端点
+
+**HTTP 端点：**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/has-messages` | GET | 检查是否有消息（不清空队列） |
+| `/messages` | GET | 获取并清空消息队列 |
+| `/commands` | GET | 列出待处理的远程命令 |
+| `/commands/<file>` | DELETE | 删除已处理的命令 |
+| `/onebot/event` | POST | 接收 NapCatQQ 的 OneBot 11 事件 |
 
 无需公网地址或 WebSocket — 所有操作都在本地运行。
 
@@ -276,6 +456,26 @@ claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude
 /qq:access policy <策略>      # 设置策略
 ```
 
+### 架构图
+
+```
+NapCatQQ (:3000) ──HTTP POST 事件上报──► server.ts (:6099)
+                ◄──HTTP API 调用────────
+                      │
+                      ├── MCP Server (stdio) ──► Claude Code
+                      ├── 消息队列 (内存，轮询模式)
+                      ├── Stop Hook (qq-poll.cjs) ──► 自动注入消息
+                      └── 远程命令 (/cmd 前缀)
+```
+
+### 安全
+
+- HTTP 服务器仅绑定 `127.0.0.1`
+- 配置文件权限为 `0o600`
+- `assertSendable()` 阻止发送频道状态文件
+- `assertAllowedUser()` 验证出站接收者
+- 危险命令模式会被过滤
+
 ### 与微信插件对比
 
 | 特性 | 微信插件 | QQ 插件 |
@@ -285,6 +485,8 @@ claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude
 | 登录方式 | 扫码获取 token | NapCatQQ WebUI 扫码 |
 | 回复凭证 | 需要 context_token | 不需要 |
 | 用户 ID | ilink_user_id | QQ 号 |
+| 远程命令 | 不支持 | 支持 (/cmd 前缀) |
+| 自动轮询 | 不支持 | 支持 (Stop hook) |
 
 ### License
 
