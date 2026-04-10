@@ -102,42 +102,61 @@ If NapCatQQ has access_token configured:
 
 ### Usage Modes
 
-#### Mode 1: Hook-Driven Polling (Recommended)
+#### Mode 1: Auto-Reply Background Script (Recommended)
 
-The plugin installs a **Stop hook** that automatically checks for new QQ messages after each Claude Code response. When messages are waiting, the hook injects them into context and keeps the session running.
+A standalone background script that polls for new messages and replies using an LLM API — no Claude Code session required.
 
-Just start Claude Code normally:
+**1. Configure LLM API** — create `~/.claude/channels/qq/api.json`:
+
+```json
+{
+  "baseUrl": "https://open.bigmodel.cn/api/paas/v4/",
+  "key": "your-api-key-here",
+  "model": "glm-5.1"
+}
+```
+
+Supports any OpenAI-compatible API (Anthropic, OpenAI, DeepSeek, GLM, etc.).
+
+**2. Start the script:**
 
 ```bash
 cd <plugin-directory>
-claude
+bun auto-reply.ts
 ```
 
-The hook runs `node hooks/qq-poll.cjs` after each response, which:
-1. Calls `/has-messages` endpoint (lightweight check, does not drain queue)
-2. If messages exist, calls `/messages` to fetch and drain the queue
-3. Blocks the stop and injects messages into the Claude session
+The script:
+- Polls `/pending-messages` every 10 seconds
+- Calls the LLM API to generate replies
+- Sends replies via NapCatQQ HTTP API
+- Handles message chunking for long replies
 
-**Loop prevention:** When Claude re-invokes after a block, the hook detects `stop_hook_active = true` and exits cleanly to prevent infinite loops.
+**3. Run as background process:**
 
-#### Mode 2: Manual Polling
-
-Use the `check_messages` MCP tool to manually poll for messages:
-
-```
-You: Check for new QQ messages
-Claude: [uses check_messages tool]
-Claude: 1 new message(s):
-
-[2026-03-28T14:30:00.000Z] QQ用户 12345678:
-Hello!
-
-You: Reply "Hi there!" to user 12345678
-Claude: [uses reply tool]
-Claude: sent 1 chunk(s)
+```bash
+nohup bun auto-reply.ts > /tmp/auto-reply.log 2>&1 &
 ```
 
-#### Mode 3: Channel Mode (Requires Channels feature)
+#### Mode 2: Claude Code Session (with cron + Stop Hook)
+
+When a Claude Code session is active, two mechanisms provide automatic QQ message handling:
+
+- **Stop Hook (asyncRewake):** After each Claude response, checks for pending messages. If found, auto-wakes Claude to process them.
+- **Cron Task (1-minute interval):** Periodic fallback that checks pending messages when the session is idle.
+
+The cron task prompt instructs Claude to:
+1. Fetch pending messages via `/pending-messages`
+2. Search the web for relevant information
+3. Generate a helpful reply
+4. Send the reply and delete the processed message
+
+> Note: Cron tasks are persistent (survive session restarts) but require Claude Code to be running.
+
+#### Mode 3: Manual Polling
+
+Use the `check_messages` MCP tool to manually poll for messages.
+
+#### Mode 4: Channel Mode (Requires Channels feature)
 
 If you have access to the Channels feature (research preview):
 
@@ -189,6 +208,8 @@ The plugin runs a local MCP server that:
 | `/health` | GET | Health check |
 | `/has-messages` | GET | Check if messages exist (does not drain queue) |
 | `/messages` | GET | Fetch and drain message queue |
+| `/pending-messages` | GET | List pending auto-reply messages |
+| `/pending-messages/<file>` | DELETE | Delete a processed pending message |
 | `/commands` | GET | List pending remote commands |
 | `/commands/<file>` | DELETE | Delete a processed command |
 | `/onebot/event` | POST | Receive OneBot 11 events from NapCatQQ |
@@ -217,12 +238,14 @@ No public URL or WebSocket needed — everything runs locally.
 ### Architecture
 
 ```
-NapCatQQ (:3000) ──HTTP POST events──► server.ts (:6099)
+NapCatQQ (:3000) ──HTTP POST events──► server.ts (:6199)
                 ◄──HTTP API calls────
                       │
                       ├── MCP Server (stdio) ──► Claude Code
+                      ├── auto-reply.ts ──► LLM API ──► Auto-reply (independent)
+                      ├── Stop Hook (asyncRewake) ──► Wake Claude on new messages
+                      ├── Cron Task (1min) ──► Fallback auto-reply
                       ├── Message Queue (in-memory, polling mode)
-                      ├── Stop Hook (qq-poll.cjs) ──► Auto-injects messages
                       └── Remote Commands (/cmd prefix)
 ```
 
@@ -346,42 +369,55 @@ claude plugin install qq@claude-channel-qq
 
 ### 使用模式
 
-#### 模式 1：Hook 自动轮询（推荐）
+#### 模式 1：自动回复后台脚本（推荐）
 
-插件安装了 **Stop hook**，在每次 Claude Code 响应后自动检查新 QQ 消息。有消息等待时，hook 会将消息注入上下文并保持会话运行。
+独立后台脚本，通过 LLM API 自动回复 QQ 消息，无需 Claude Code 会话。
 
-正常启动 Claude Code 即可：
+**1. 配置 LLM API** — 创建 `~/.claude/channels/qq/api.json`：
+
+```json
+{
+  "baseUrl": "https://open.bigmodel.cn/api/paas/v4/",
+  "key": "your-api-key-here",
+  "model": "glm-5.1"
+}
+```
+
+支持任何 OpenAI 兼容 API（Anthropic、OpenAI、DeepSeek、GLM 等）。
+
+**2. 启动脚本：**
 
 ```bash
 cd <插件目录>
-claude
+bun auto-reply.ts
 ```
 
-Hook 运行 `node hooks/qq-poll.cjs`，工作流程：
-1. 调用 `/has-messages` 端点（轻量检查，不清空队列）
-2. 如果有消息，调用 `/messages` 获取并清空队列
-3. 阻止停止并将消息注入 Claude 会话
+脚本工作流程：
+- 每 10 秒轮询 `/pending-messages` 端点
+- 调用 LLM API 生成回复
+- 通过 NapCatQQ HTTP API 发送回复
+- 自动处理长消息分块
 
-**循环防护：** Claude 因 block 重新调用时，hook 检测到 `stop_hook_active = true`，干净退出，防止无限循环。
+**3. 后台运行：**
 
-#### 模式 2：手动轮询
-
-使用 `check_messages` MCP 工具手动轮询消息：
-
-```
-你: 检查新的 QQ 消息
-Claude: [使用 check_messages 工具]
-Claude: 1 条新消息：
-
-[2026-03-28T14:30:00.000Z] QQ用户 12345678:
-你好！
-
-你: 向用户 12345678 回复 "你好！"
-Claude: [使用 reply 工具]
-Claude: 已发送 1 个消息块
+```bash
+nohup bun auto-reply.ts > /tmp/auto-reply.log 2>&1 &
 ```
 
-#### 模式 3：频道模式（需要 Channels 功能）
+#### 模式 2：Claude Code 会话（cron + Stop Hook）
+
+当 Claude Code 会话处于活跃状态时，两个机制提供自动 QQ 消息处理：
+
+- **Stop Hook (asyncRewake)：** 每次 Claude 回复后检查待处理消息，发现消息时自动唤醒 Claude 处理
+- **Cron 定时任务（1分钟间隔）：** 会话空闲时的兜底检查，持久化配置，重启不丢失
+
+> 注意：Cron 任务需要 Claude Code 处于运行状态。
+
+#### 模式 3：手动轮询
+
+使用 `check_messages` MCP 工具手动轮询消息。
+
+#### 模式 4：频道模式（需要 Channels 功能）
 
 如果你有 Channels 功能访问权限（研究预览）：
 
@@ -431,6 +467,8 @@ claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude
 | `/health` | GET | 健康检查 |
 | `/has-messages` | GET | 检查是否有消息（不清空队列） |
 | `/messages` | GET | 获取并清空消息队列 |
+| `/pending-messages` | GET | 列出待自动回复的消息 |
+| `/pending-messages/<file>` | DELETE | 删除已处理的待回复消息 |
 | `/commands` | GET | 列出待处理的远程命令 |
 | `/commands/<file>` | DELETE | 删除已处理的命令 |
 | `/onebot/event` | POST | 接收 NapCatQQ 的 OneBot 11 事件 |
@@ -459,12 +497,14 @@ claude --dangerously-load-development-channels plugin:qq@github:wanghulab/claude
 ### 架构图
 
 ```
-NapCatQQ (:3000) ──HTTP POST 事件上报──► server.ts (:6099)
+NapCatQQ (:3000) ──HTTP POST 事件上报──► server.ts (:6199)
                 ◄──HTTP API 调用────────
                       │
                       ├── MCP Server (stdio) ──► Claude Code
+                      ├── auto-reply.ts ──► LLM API ──► 独立自动回复
+                      ├── Stop Hook (asyncRewake) ──► 有新消息时唤醒 Claude
+                      ├── Cron 定时任务 (1分钟) ──► 兜底自动回复
                       ├── 消息队列 (内存，轮询模式)
-                      ├── Stop Hook (qq-poll.cjs) ──► 自动注入消息
                       └── 远程命令 (/cmd 前缀)
 ```
 

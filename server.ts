@@ -159,9 +159,13 @@ async function apiFetch(endpoint: string, body: object, timeoutMs = 15000): Prom
 }
 
 async function sendPrivateMsg(userId: string, message: string): Promise<void> {
+  const segments = chunk(message, MAX_CHUNK_LIMIT).map(text => ({
+    type: 'text' as const,
+    data: { text },
+  }))
   await apiFetch('send_private_msg', {
     user_id: userId,
-    message,
+    message: segments,
   })
 }
 
@@ -467,15 +471,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
         assertAllowedUser(userId)
 
-        const access = loadAccess()
-        const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
-        const chunks = chunk(text, limit)
+        await sendPrivateMsg(userId, text)
 
-        for (const c of chunks) {
-          await sendPrivateMsg(userId, c)
-        }
-
-        return { content: [{ type: 'text', text: `sent ${chunks.length} chunk(s)` }] }
+        return { content: [{ type: 'text', text: 'sent' }] }
       }
 
       default:
